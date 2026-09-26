@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://mailry.co">
+    <img src="https://mailry.co/images/logo/mailry-web-logo.svg" alt="Mailry" width="200" />
+  </a>
+</p>
+
 # Mailry SDK for JavaScript & TypeScript
 
 The official Node.js and TypeScript client for the [Mailry.co](https://mailry.co) public API. Send email from your mailboxes, upload attachments and look up your domains and email accounts.
