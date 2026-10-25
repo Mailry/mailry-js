@@ -16,10 +16,10 @@ export const DEFAULT_MAX_RETRIES = 2;
 type QueryValue = string | number | boolean | null | undefined;
 
 export interface HttpRequest {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   path: string;
   query?: Record<string, QueryValue>;
-  body?: FormData;
+  body?: FormData | Record<string, unknown>;
   options?: RequestOptions;
 }
 
@@ -90,8 +90,8 @@ export class HttpClient {
     try {
       response = await this.fetchImpl(url, {
         method: req.method,
-        headers: this.buildHeaders(req.options?.headers),
-        body: req.body,
+        headers: this.buildHeaders(req.options?.headers, isJsonBody(req.body)),
+        body: isJsonBody(req.body) ? JSON.stringify(req.body) : req.body,
         signal: controller.signal,
       });
     } catch (error) {
@@ -116,9 +116,10 @@ export class HttpClient {
     return url.toString();
   }
 
-  private buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  private buildHeaders(extra?: Record<string, string>, json = false): Record<string, string> {
     return {
       Accept: 'application/json',
+      ...(json ? { 'Content-Type': 'application/json' } : {}),
       'User-Agent': `mailry-js/${VERSION}`,
       ...this.defaultHeaders,
       ...extra,
@@ -143,6 +144,10 @@ export class HttpClient {
     const base = Math.min(500 * 2 ** (attempt - 1), 8_000);
     return base * (0.75 + Math.random() * 0.5);
   }
+}
+
+function isJsonBody(body: HttpRequest['body']): body is Record<string, unknown> {
+  return body !== undefined && !(body instanceof FormData);
 }
 
 async function parseBody(response: Response): Promise<unknown> {
