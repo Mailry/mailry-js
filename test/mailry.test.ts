@@ -6,6 +6,7 @@ import {
   DEFAULT_BASE_URL,
   Mailry,
   MailryError,
+  MessageFolder,
   RateLimitError,
   TimeoutError,
 } from '../src';
@@ -140,6 +141,84 @@ describe('inbox.uploadAttachment', () => {
     const file = (calls[0]!.init.body as FormData).get('file') as File;
     expect(file.name).toBe('a.docx');
     expect(file.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  });
+});
+
+describe('inbox messages', () => {
+  const ok = (data: unknown) => json({ data, status_code: 200, message: 'ok' });
+
+  it('lists messages with filters as query params', async () => {
+    const { fetch, calls } = mockFetch(page([{ id: 'm1' }], 1, 1));
+    const res = await new Mailry('k', { fetch }).inbox.list({
+      emailId: 'mbx-1',
+      folder: MessageFolder.Spam,
+      isStarred: true,
+      search: 'invoice',
+      limit: 20,
+    });
+
+    expect(calls[0]!.init.method).toBe('GET');
+    expect(calls[0]!.url.pathname).toBe('/public/inbox');
+    expect(Object.fromEntries(calls[0]!.url.searchParams)).toEqual({
+      emailId: 'mbx-1',
+      folder: '4',
+      isStarred: 'true',
+      search: 'invoice',
+      limit: '20',
+    });
+    expect(res.data[0]!.id).toBe('m1');
+  });
+
+  it('fetches a message and its thread', async () => {
+    const { fetch, calls } = mockFetch(ok({ id: 'm1', attachments: [] }), ok([{ id: 'm0' }, { id: 'm1' }]));
+    const mailry = new Mailry('k', { fetch });
+
+    expect((await mailry.inbox.get('m1')).data.id).toBe('m1');
+    expect((await mailry.inbox.thread('m1')).data).toHaveLength(2);
+    expect(calls.map((c) => c.url.pathname)).toEqual(['/public/inbox/m1', '/public/inbox/m1/thread']);
+  });
+
+  it('deletes messages with a json body', async () => {
+    const { fetch, calls } = mockFetch(ok({}));
+    await new Mailry('k', { fetch }).inbox.delete(['m1', 'm2']);
+
+    expect(calls[0]!.init.method).toBe('DELETE');
+    expect(calls[0]!.url.pathname).toBe('/public/inbox');
+    expect((calls[0]!.init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ inboxId: ['m1', 'm2'] });
+  });
+
+  it('marks messages as spam and stars them', async () => {
+    const { fetch, calls } = mockFetch(ok({ updated: 1 }), ok({ updated: 2 }));
+    const mailry = new Mailry('k', { fetch });
+
+    expect((await mailry.inbox.markSpam('m1')).data.updated).toBe(1);
+    expect((await mailry.inbox.star(['m1', 'm2'], false)).data.updated).toBe(2);
+
+    expect(calls.map((c) => [c.init.method, c.url.pathname])).toEqual([
+      ['PATCH', '/public/inbox/spam'],
+      ['PATCH', '/public/inbox/star'],
+    ]);
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ inboxId: ['m1'], isSpam: true });
+    expect(JSON.parse(calls[1]!.init.body as string)).toEqual({ inboxId: ['m1', 'm2'], isStarred: false });
+  });
+
+  it('deletes an attachment', async () => {
+    const { fetch, calls } = mockFetch(ok({}));
+    await new Mailry('k', { fetch }).inbox.deleteAttachment('att-1');
+    expect(calls[0]!.init.method).toBe('DELETE');
+    expect(calls[0]!.url.pathname).toBe('/public/inbox/attachment/att-1');
+    expect(calls[0]!.init.body).toBeUndefined();
+  });
+
+  it('validates ids before calling the api', async () => {
+    const { fetch } = mockFetch();
+    const mailry = new Mailry('k', { fetch });
+
+    await expect(mailry.inbox.get('')).rejects.toThrow(MailryError);
+    await expect(mailry.inbox.delete([])).rejects.toThrow(/one or more/);
+    await expect(mailry.inbox.star(Array.from({ length: 101 }, (_, i) => `m${i}`))).rejects.toThrow(/at most 100/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

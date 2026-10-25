@@ -67,6 +67,69 @@ export interface UploadedAttachment {
 
 export type UploadAttachmentResponse = MailryResponse<UploadedAttachment>;
 
+export const MessageFolder = {
+  Inbox: 1,
+  Sent: 2,
+  Draft: 3,
+  Spam: 4,
+} as const;
+
+export type MessageFolder = (typeof MessageFolder)[keyof typeof MessageFolder];
+
+export interface MessageAttachment {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  inboxId: string | null;
+  fileName: string;
+  originalFileName: string;
+  fileType: string;
+  /** Short-lived signed download link. Fetch it promptly rather than storing it. */
+  fileUrl: string | null;
+  /** Size in KB. */
+  fileSize: number;
+}
+
+export interface Message {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  emailId: string;
+  userId: string;
+  messageId: string;
+  threadId: string | null;
+  subject: string;
+  from: string | null;
+  mailFrom: string | null;
+  to: string | null;
+  textBody: string;
+  htmlBody: string;
+  isReaded: boolean;
+  isSpam: boolean;
+  isStarred: boolean;
+  isScam: boolean;
+  folder: MessageFolder | null;
+  /** Size of the bodies and attachments, in KB. */
+  sizeKb: number;
+  email?: EmailAccount;
+  /** Included by `inbox.get()` and `inbox.thread()`, not by `inbox.list()`. */
+  attachments?: MessageAttachment[];
+}
+
+export interface ListMessagesParams extends PaginationParams {
+  /** Matches subject, sender and body. Returns individual messages instead of one row per conversation. */
+  search?: string;
+  domainId?: string;
+  emailId?: string;
+  folder?: MessageFolder;
+  /** Only `true` filters; `false` returns starred and unstarred messages alike. */
+  isStarred?: boolean;
+}
+
+export interface UpdatedCount {
+  updated: number;
+}
+
 export const EmailAccountStatus = {
   Restricted: 0,
   Active: 1,

@@ -6,7 +6,7 @@
 
 # Mailry SDK for JavaScript & TypeScript
 
-The official Node.js and TypeScript client for the [Mailry.co](https://mailry.co) public API. Send email from your mailboxes, upload attachments and look up your domains and email accounts.
+The official Node.js and TypeScript client for the [Mailry.co](https://mailry.co) public API. Send email from your mailboxes, read and manage the messages they hold, upload attachments and look up your domains and email accounts.
 
 - Written in TypeScript, with full type definitions
 - Works with ESM and CommonJS
@@ -159,6 +159,113 @@ const { data } = await mailry.inbox.uploadAttachment({
 console.log(data.id, data.fileName, data.fileSize);
 ```
 
+### List messages
+
+`GET /public/inbox`
+
+Messages come newest first, one row per conversation. With `search`, which matches subject, sender and body, each matching message is returned on its own.
+
+```ts
+import { MessageFolder } from 'mailry';
+
+const { data, pagination } = await mailry.inbox.list({
+  emailId: 'b3f1c2d4-...',
+  folder: MessageFolder.Inbox,
+  isStarred: true,
+  search: 'invoice',
+  page: 1,
+  limit: 20,
+});
+
+for (const message of data) {
+  console.log(message.id, message.from, message.subject, message.isReaded);
+}
+```
+
+| Field       | Type            | Description                                                  |
+| ----------- | --------------- | ------------------------------------------------------------ |
+| `emailId`   | `string`        | Only messages of this mailbox                                |
+| `domainId`  | `string`        | Only messages of mailboxes on this domain                    |
+| `folder`    | `MessageFolder` | `Inbox` (1), `Sent` (2), `Draft` (3) or `Spam` (4)            |
+| `isStarred` | `boolean`       | `true` returns only starred messages                         |
+| `search`    | `string`        | Matches subject, sender and body                             |
+| `page`      | `number`        | Page number, starting at 1                                   |
+| `limit`     | `number`        | Page size, up to 100                                         |
+
+### Get a message
+
+`GET /public/inbox/{id}`
+
+Returns one message with its bodies and attachments, and marks it as read.
+
+```ts
+const { data: message } = await mailry.inbox.get(messageId);
+
+console.log(message.subject, message.textBody);
+
+for (const attachment of message.attachments ?? []) {
+  console.log(attachment.originalFileName, attachment.fileUrl);
+}
+```
+
+Each attachment's `fileUrl` is a signed link that expires after a short time. Download it right away rather than storing it.
+
+### Get a conversation
+
+`GET /public/inbox/{id}/thread`
+
+Returns every message in the same conversation as the given one, oldest first, and marks them as read.
+
+```ts
+const { data: messages } = await mailry.inbox.thread(messageId);
+```
+
+### Star messages
+
+`PATCH /public/inbox/star`
+
+Star or unstar up to 100 messages at a time. Returns how many were updated.
+
+```ts
+await mailry.inbox.star([firstId, secondId]);
+
+const { data } = await mailry.inbox.star(firstId, false);
+console.log(data.updated);
+```
+
+### Mark messages as spam
+
+`PATCH /public/inbox/spam`
+
+Move up to 100 received messages to the Spam folder, or pass `false` to move them back to the Inbox. Sent and draft messages are left untouched. Returns how many were moved.
+
+```ts
+await mailry.inbox.markSpam(messageId);
+await mailry.inbox.markSpam(messageId, false);
+```
+
+### Delete messages
+
+`DELETE /public/inbox`
+
+Permanently delete messages and their attachments, freeing the storage they used.
+
+```ts
+await mailry.inbox.delete([firstId, secondId]);
+```
+
+### Delete an attachment
+
+`DELETE /public/inbox/attachment/{id}`
+
+Delete an attachment you uploaded and no longer need, or one on a stored message.
+
+```ts
+const { data: uploaded } = await mailry.inbox.uploadAttachment(file);
+
+await mailry.inbox.deleteAttachment(uploaded.id);
+```
+
 ### List email accounts
 
 `GET /public/email`
@@ -201,6 +308,10 @@ for await (const domain of mailry.domains.listAll()) {
 
 for await (const account of mailry.emailAccounts.listAll({ domainId })) {
   console.log(account.email);
+}
+
+for await (const message of mailry.inbox.listAll({ folder: MessageFolder.Inbox })) {
+  console.log(message.subject);
 }
 ```
 
@@ -249,7 +360,7 @@ try {
 
 ### Retries
 
-The API allows 120 requests per minute per API key. Rate limited requests (`429`) are retried automatically, honouring the `Retry-After` header. Read requests are also retried on network errors, timeouts and `5xx` responses. Sends are never retried after they reach the server, so an email is not delivered twice. Set `maxRetries: 0` to turn retries off.
+The API allows 120 requests per minute per API key. Rate limited requests (`429`) are retried automatically, honouring the `Retry-After` header. Read requests (`GET`) are also retried on network errors, timeouts and `5xx` responses. Sends are never retried after they reach the server, so an email is not delivered twice. Set `maxRetries: 0` to turn retries off.
 
 ## TypeScript
 
@@ -259,6 +370,9 @@ All request and response types are exported:
 import type {
   SendEmailParams,
   SendEmailResponse,
+  Message,
+  MessageAttachment,
+  ListMessagesParams,
   EmailAccount,
   Domain,
   MailryListResponse,
